@@ -1,0 +1,5 @@
+{
+  "name": "LuckyMap Korea",
+  "description": "A visual map application showing lottery winning hotspots in South Korea using React Leaflet and Tailwind CSS.",
+  "requestFramePermissions": []
+}
