@@ -48,80 +48,152 @@ class LottoAutoUpdater:
         print(f"📁 로컬 최신 회차: {latest}회")
         return latest
 
-    async def get_site_latest_round(self) -> int:
+    async def get_site_latest_round(self, retry_count: int = 3) -> int:
         """동행복권 사이트에서 최신 회차 확인"""
-        playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(headless=True)
+        last_error = None
 
-        try:
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                viewport={"width": 1920, "height": 1080},
-                locale="ko-KR",
-            )
-            page = await context.new_page()
+        for attempt in range(retry_count):
+            playwright = None
+            browser = None
+            try:
+                if attempt > 0:
+                    print(f"🔄 재시도 {attempt + 1}/{retry_count}...")
+                    await asyncio.sleep(5)
 
-            await page.goto(self.url, wait_until="domcontentloaded", timeout=60000)
-            await page.wait_for_selector('select#srchLtEpsd', state='visible', timeout=30000)
+                playwright = await async_playwright().start()
+                browser = await playwright.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-blink-features=AutomationControlled',
+                    ]
+                )
 
-            # 첫 번째 옵션이 최신 회차
-            first_option = await page.query_selector('select#srchLtEpsd option:first-child')
-            if first_option:
-                value = await first_option.get_attribute('value')
-                latest = int(value)
-                print(f"🌐 사이트 최신 회차: {latest}회")
-                return latest
-            return 0
+                context = await browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    viewport={"width": 1920, "height": 1080},
+                    locale="ko-KR",
+                    extra_http_headers={
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+                        "Accept-Encoding": "gzip, deflate, br",
+                        "Connection": "keep-alive",
+                        "Upgrade-Insecure-Requests": "1",
+                    }
+                )
+                page = await context.new_page()
 
-        except Exception as e:
-            print(f"❌ 사이트 확인 실패: {e}")
-            return 0
-        finally:
-            await browser.close()
-            await playwright.stop()
+                # 자동화 탐지 우회
+                await page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                """)
 
-    async def crawl_round(self, round_num: int) -> list:
+                print(f"🌐 사이트 접속 중... ({self.url})")
+                await page.goto(self.url, wait_until="domcontentloaded", timeout=60000)
+
+                print("⏳ 페이지 로딩 대기 중...")
+                await page.wait_for_selector('select#srchLtEpsd', state='visible', timeout=30000)
+
+                # 첫 번째 옵션이 최신 회차
+                first_option = await page.query_selector('select#srchLtEpsd option:first-child')
+                if first_option:
+                    value = await first_option.get_attribute('value')
+                    latest = int(value)
+                    print(f"🌐 사이트 최신 회차: {latest}회")
+                    return latest
+
+                print("⚠️ 회차 선택 옵션을 찾을 수 없음")
+                return 0
+
+            except Exception as e:
+                last_error = e
+                print(f"⚠️ 시도 {attempt + 1} 실패: {type(e).__name__}: {e}")
+            finally:
+                if browser:
+                    await browser.close()
+                if playwright:
+                    await playwright.stop()
+
+        print(f"❌ 사이트 확인 실패 (총 {retry_count}회 시도): {last_error}")
+        return 0
+
+    async def crawl_round(self, round_num: int, retry_count: int = 3) -> list:
         """특정 회차 크롤링"""
         print(f"\n🔄 {round_num}회 크롤링 중...")
+        last_error = None
 
-        playwright = await async_playwright().start()
-        browser = await playwright.chromium.launch(headless=True)
+        for attempt in range(retry_count):
+            playwright = None
+            browser = None
+            try:
+                if attempt > 0:
+                    print(f"🔄 재시도 {attempt + 1}/{retry_count}...")
+                    await asyncio.sleep(5)
 
-        try:
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                viewport={"width": 1920, "height": 1080},
-                locale="ko-KR",
-            )
-            page = await context.new_page()
+                playwright = await async_playwright().start()
+                browser = await playwright.chromium.launch(
+                    headless=True,
+                    args=[
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-dev-shm-usage',
+                        '--disable-blink-features=AutomationControlled',
+                    ]
+                )
 
-            await page.goto(self.url, wait_until="domcontentloaded", timeout=60000)
-            await page.wait_for_selector('.store-list', state='visible', timeout=30000)
+                context = await browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    viewport={"width": 1920, "height": 1080},
+                    locale="ko-KR",
+                    extra_http_headers={
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                        "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+                        "Accept-Encoding": "gzip, deflate, br",
+                        "Connection": "keep-alive",
+                        "Upgrade-Insecure-Requests": "1",
+                    }
+                )
+                page = await context.new_page()
 
-            # 로또 선택
-            await page.select_option('select#ltGds', 'lt645')
-            await asyncio.sleep(1)
+                # 자동화 탐지 우회
+                await page.add_init_script("""
+                    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                """)
 
-            # 회차 선택
-            await page.select_option('select#srchLtEpsd', str(round_num))
-            await page.evaluate('WnPrchsPlcSrchM.fn_selectWnShp()')
-            await asyncio.sleep(2)
-            await page.wait_for_selector('.store-box', state='visible', timeout=15000)
+                await page.goto(self.url, wait_until="domcontentloaded", timeout=60000)
+                await page.wait_for_selector('.store-list', state='visible', timeout=30000)
 
-            # 데이터 추출
-            html = await page.content()
-            soup = BeautifulSoup(html, 'html.parser')
-            stores = self._extract_stores(soup, str(round_num))
+                # 로또 선택
+                await page.select_option('select#ltGds', 'lt645')
+                await asyncio.sleep(1)
 
-            print(f"✅ {round_num}회: {len(stores)}개 판매점 수집")
-            return stores
+                # 회차 선택
+                await page.select_option('select#srchLtEpsd', str(round_num))
+                await page.evaluate('WnPrchsPlcSrchM.fn_selectWnShp()')
+                await asyncio.sleep(2)
+                await page.wait_for_selector('.store-box', state='visible', timeout=15000)
 
-        except Exception as e:
-            print(f"❌ {round_num}회 크롤링 실패: {e}")
-            return []
-        finally:
-            await browser.close()
-            await playwright.stop()
+                # 데이터 추출
+                html = await page.content()
+                soup = BeautifulSoup(html, 'html.parser')
+                stores = self._extract_stores(soup, str(round_num))
+
+                print(f"✅ {round_num}회: {len(stores)}개 판매점 수집")
+                return stores
+
+            except Exception as e:
+                last_error = e
+                print(f"⚠️ 시도 {attempt + 1} 실패: {type(e).__name__}: {e}")
+            finally:
+                if browser:
+                    await browser.close()
+                if playwright:
+                    await playwright.stop()
+
+        print(f"❌ {round_num}회 크롤링 실패 (총 {retry_count}회 시도): {last_error}")
+        return []
 
     def _extract_stores(self, soup: BeautifulSoup, round_num: str) -> list:
         """HTML에서 판매점 정보 추출"""
