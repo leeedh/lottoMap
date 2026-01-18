@@ -41,7 +41,7 @@
 ### 1) `draws`
 
 - 컬럼
-  - `round_no` INT PRIMARY KEY ← CSV `drw_no`
+  - `round_no` INT PRIMARY KEY ← CSV `회차`
   - `draw_date` DATE NULL (룰 또는 외부 소스로 채움)
   - `created_at` TIMESTAMPTZ DEFAULT now()
   - `updated_at` TIMESTAMPTZ NULL (자동 갱신 제거)
@@ -56,7 +56,7 @@
   - `address_norm` TEXT NOT NULL
   - `lat` DOUBLE PRECISION NULL
   - `lng` DOUBLE PRECISION NULL
-  - `source_id` VARCHAR(100) NOT NULL ← CSV `store_id`
+  - `source_id` VARCHAR(100) NOT NULL ← CSV `판매점ID` (동행복권 판매점 고유 ID)
   - `is_active` BOOLEAN DEFAULT TRUE
   - `created_at` TIMESTAMPTZ DEFAULT now()
   - `updated_at` TIMESTAMPTZ NULL (자동 갱신 제거)
@@ -70,23 +70,24 @@
   - `source_row_hash` VARCHAR(64) PRIMARY KEY (idempotent upsert 키)
   - `draw_id` INT NOT NULL REFERENCES `draws`(`round_no`)
   - `store_id` BIGINT NOT NULL REFERENCES `stores`(`id`)
-  - `lottery_type` VARCHAR(10) NOT NULL CHECK (lottery_type IN ('LOTTO','PENSION'))  -- 복권 종류
-  - `rank` SMALLINT NOT NULL CHECK (rank IN (1,2))
-  - `method` VARCHAR(10) NULL CHECK (method IN ('AUTO','MANUAL','SEMI','UNKNOWN'))
-  - `source_seq` INTEGER NULL
+  - `lottery_type` VARCHAR(10) NOT NULL CHECK (lottery_type IN ('LOTTO','PENSION'))  -- 복권 종류 (현재는 LOTTO만 적재)
+  - `rank` SMALLINT NOT NULL
+  - `method` VARCHAR(10) NOT NULL DEFAULT 'UNKNOWN' CHECK (method IN ('AUTO','MANUAL','SEMI','UNKNOWN'))
+  - `source_seq` INTEGER NULL  -- CSV `번호` (동일 회차/판매점/등수 내 다중 당첨 구분용)
   - `won_at` DATE NULL
   - `created_at` TIMESTAMPTZ DEFAULT now()
 - 인덱스
   - (`draw_id`, `lottery_type`, `rank`), (`store_id`, `lottery_type`, `rank`), (`won_at`), (`method`)
 - 매핑
-  - `'자동'→AUTO`, `'수동'→MANUAL`, `'반자동'→SEMI`, 그 외→UNKNOWN
+  - `'자동'→AUTO`, `'수동'→MANUAL`, `'반자동'→SEMI`, 빈값/그 외→UNKNOWN
 - 타입별 제약(권장)
   - 목적: 로또/연금복권을 같은 테이블로 수집/적재하면서도 제약 위반으로 ETL이 멈추는 것을 방지
   - CHECK 예시:
     - `((lottery_type='LOTTO' AND rank IN (1,2)) OR (lottery_type='PENSION' AND rank IN (1)))`
-    - `((lottery_type='LOTTO' AND method IS NOT NULL) OR (lottery_type='PENSION' AND method IS NULL))`
+    - (권장) `method`는 현재 원천(CSV/HTML)에서 빈 값이 존재하므로 `UNKNOWN`으로 흡수하여 NOT NULL 유지
 - 고유해시 예시
-  - `sha1(concat(drw_no,'|',lottery_type,'|',store_id,'|',rank,'|',coalesce(category,''),'|',coalesce(number,'')))`
+  - (권장) **내부 PK(store_id)가 아닌 원천 키 기반으로 생성**
+  - `sha256(concat(round_no,'|',lottery_type,'|',store_source_id,'|',rank,'|',coalesce(source_seq,0)))`
 
 ### 4) `geocode_cache`
 
@@ -135,33 +136,42 @@
 
 ---
 
-## CSV → 스테이징/정규화 매핑 (향후 구현 예정)
-> 참고: 현재는 문서상 예시로 CSV 스테이징을 사용했지만, 실제 소스는 "동행복권 공개 엔드포인트(JSON/HTML)"가 될 가능성이 큽니다.
-> 따라서 아래 스테이징 섹션은 "원천 포맷(CSV/JSON/HTML)과 무관하게, ETL 적재 전에 거치는 임시 적재 형태"로 이해하면 됩니다.
+## 원천 → 스테이징/정규화 매핑 (향후 구현 예정)
+> 참고
+> - 현재 수집된 데이터는 `lotto-crawling/lotto_all_rounds.csv`(로또6/45 당첨 판매점)입니다.
+> - 향후에는 동행복권 JSON API 호출이 가능하면 API를 1순위로 사용하고, 불가 시 현재처럼 Playwright 기반 HTML 추출을 백업 경로로 둡니다.
+> - 원천 포맷(CSV/JSON/HTML)과 무관하게, 아래 스테이징 형태로 정규화한 후 본 테이블로 적재합니다.
 
-## `stg_lotto_salespoints` (임시 스테이징)
+## `stg_winning_store_rows` (임시 스테이징)
 
-- `drw_no` INT NOT NULL
-- `rank` SMALLINT NOT NULL
-- `number` INT NULL  → `source_seq`
-- `name` TEXT NOT NULL
-- `category` TEXT NULL → `method_raw`
-- `address` TEXT NOT NULL
-- `store_id` TEXT NOT NULL
+- `round_no` INT NOT NULL                     ← CSV `회차`
+- `store_source_id` TEXT NOT NULL             ← CSV `판매점ID`
+- `source_seq` INT NULL                       ← CSV `번호`
+- `store_name` TEXT NOT NULL                  ← CSV `판매점명`
+- `rank` SMALLINT NOT NULL                    ← CSV `등수`(1/2)
+- `method_raw` TEXT NULL                      ← CSV `자동수동`(자동/수동/반자동/빈값)
+- `address_raw` TEXT NOT NULL                 ← CSV `주소`
+- `region_raw` TEXT NULL                      ← CSV `지역`(빈값 가능)
+- `phone_raw` TEXT NULL                       ← CSV `전화번호`
+- `products_raw` TEXT NULL                    ← CSV `취급복권`
+- `lat` DOUBLE PRECISION NULL                 ← CSV `위도`
+- `lng` DOUBLE PRECISION NULL                 ← CSV `경도`
+- `crawled_at` TIMESTAMPTZ NULL               ← CSV `크롤링시간`
 - `loaded_at` TIMESTAMPTZ DEFAULT now()
-- `source_row_hash` VARCHAR(64) UNIQUE
+- `source_row_hash` VARCHAR(64) UNIQUE        -- 멱등 적재 키
 
 ## 변환 규칙
 
-1. 회차 upsert: `draws.round_no = drw_no` (없으면 insert)
-2. 판매점 upsert: `stores`를 `source_id`로 upsert (UNIQUE)
+1. 회차 upsert: `draws.round_no = round_no` (없으면 insert)
+2. 판매점 upsert: `stores`를 `source_id = store_source_id`로 upsert (UNIQUE)
    - `name`, `address_raw` 저장 → `address_norm` 정규화
-   - 좌표 없음 → `geocode_cache` 조회 → 미스 시 카카오 지오코딩(주소→키워드 순) → 실패 시 스크래핑 보조(선택) → 캐시 저장
-3. 카테고리 정규화: `category` -> `method` 매핑(AUTO/MANUAL/SEMI/UNKNOWN)
+   - 좌표가 유효하면(`lat/lng` 범위 검증 통과) `stores.lat/lng` 업데이트
+   - 좌표가 없거나 이상치면 → `geocode_cache` 조회 → 미스 시 카카오 지오코딩(주소→키워드 순) → 캐시 저장
+3. 방법 정규화: `method_raw` -> `method` 매핑(AUTO/MANUAL/SEMI/UNKNOWN). 빈값은 UNKNOWN
 4. 당첨내역 upsert: `winning_records`
-   - `draw_id`(조인), `store_id`(조인), `rank`, `method`, `source_seq`
-   - `source_row_hash`로 idempotent upsert
-5. 집계 갱신: 로딩 중 즉시 `store_stats` 누적 (ON CONFLICT (store_id))
+   - `draw_id`(조인), `store_id`(조인), `lottery_type='LOTTO'`(현재 고정), `rank`, `method`, `source_seq`
+   - `source_row_hash = sha256(round_no|LOTTO|store_source_id|rank|source_seq)`로 idempotent upsert
+5. 집계 갱신: 배치 적재 후 `store_stats`를 재계산하거나, 적재 시점에 증분 upsert(ON CONFLICT (store_id))
 6. 이름 변경 이력: 기존 이름과 신규 이름 비교 후 `store_name_history` 기록(의미있는 변경만 구분)
 
 ---
@@ -186,7 +196,7 @@
   * `draws(round_no)`
 
 * **CHECK**: 
-  * `winning_records.rank ∈ {1,2}`
+  * `winning_records.rank`: `lottery_type`별로 허용 등수 범위 정의
   * `winning_records.method ∈ {AUTO,MANUAL,SEMI,UNKNOWN}`
 
 * **인덱스**:

@@ -1,0 +1,5 @@
+# Python 3.13 호환성을 위해 최신 버전 사용
+playwright>=1.41.0
+beautifulsoup4==4.12.3
+lxml==5.1.0
+

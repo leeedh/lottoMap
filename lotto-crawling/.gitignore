@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 가상환경
+venv/
+ENV/
+env/
+.venv
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# 환경 변수
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 크롤링 결과 파일 (임시 파일만 제외)
+# lotto_all_rounds.csv는 GitHub에 저장하므로 포함
+lotto_stores_*.csv
+crawl_checkpoint_*.json
+
+# 실행 과정에서 생성되는 임시/디버그 산출물 (Git에 올리지 않음)
+crawl_log.txt
+lotto.html
+page_debug.html
+
+# 로그 파일
+*.log
+launchd_stdout.log
+launchd_stderr.log
+auto_update.log
+
+# macOS launchd 설정 (로컬 전용)
+com.lotto.autoupdate.plist
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Playwright
+playwright-report/
+test-results/
+
+# 임시 파일
+*.tmp
+temp/
+

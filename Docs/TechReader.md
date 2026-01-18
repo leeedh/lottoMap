@@ -185,12 +185,12 @@
     * 요청: 판매점 ID
     * 응답: 회차별 당첨 이력
   * `GET /api/rankings`
-    * 요청: scope(city|province|national), lotteryType(LOTTO|PENSION), rank, limit
+    * 요청: scope(city|province|national), lotteryType(LOTTO), rank, limit  (PENSION은 향후 데이터 연동 후 지원)
     * 응답: 랭킹 리스트
 
 > 참고: `rank`의 허용 범위는 `lotteryType`에 따라 달라집니다.
 > - LOTTO: 1 또는 2
-> - PENSION: 1 (MVP 기준)
+> - PENSION: (향후) 1 등
 
 * **테스트 항목** (예정)
 
@@ -219,14 +219,16 @@
 
 * **ETL Crawler** (예정)
 
-  * 동행복권 JSON → 최신 회차 확인
-  * 동행복권 HTML → 판매점 정보 파싱
-  * 정규화 후 Pub/Sub 메시지 발행
+  * (권장) 동행복권 내부 **JSON API**로 회차별/등수별 당첨 판매점 데이터를 수집 (가능하면 API 1순위)
+  * 단, 네트워크/차단 정책 등으로 직접 호출이 불안정할 수 있으므로 **Playwright 기반 HTML 추출(현재 auto-crawler 구현)**을 백업 경로로 유지
+  * 현재 단계에서는 **로또6/45(LOTTO)만 적재**하며, 연금복권은 데이터 확보 후 별도 크롤러로 확장
+  * 정규화 후 DB 적재(또는 Pub/Sub 메시지 발행)
 
 * **Geocode Worker** (예정)
 
   * Pub/Sub 메시지 수신 → 주소 캐시 조회
   * Kakao Local API 호출 → 좌표 DB 반영
+  * (보완) 원천에서 좌표가 이미 제공되는 경우(HTML hidden input 등)에는 지오코딩을 생략하고 검증만 수행
 
 * **테스트 항목** (예정)
 
