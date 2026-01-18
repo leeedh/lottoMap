@@ -83,7 +83,7 @@
 - 타입별 제약(권장)
   - 목적: 로또/연금복권을 같은 테이블로 수집/적재하면서도 제약 위반으로 ETL이 멈추는 것을 방지
   - CHECK 예시:
-    - `((lottery_type='LOTTO' AND rank IN (1,2)) OR (lottery_type='PENSION' AND rank IN (1)))`
+    - `((lottery_type='LOTTO' AND rank IN (1,2)) OR (lottery_type='PENSION' AND rank IN (0,1,2)))`
     - (권장) `method`는 현재 원천(CSV/HTML)에서 빈 값이 존재하므로 `UNKNOWN`으로 흡수하여 NOT NULL 유지
 - 고유해시 예시
   - (권장) **내부 PK(store_id)가 아닌 원천 키 기반으로 생성**
@@ -144,11 +144,13 @@
 
 ## `stg_winning_store_rows` (임시 스테이징)
 
+- `lottery_type` TEXT NOT NULL                 -- 'LOTTO' | 'PENSION' (원천 파일/크롤러 설정으로 주입)
 - `round_no` INT NOT NULL                     ← CSV `회차`
 - `store_source_id` TEXT NOT NULL             ← CSV `판매점ID`
 - `source_seq` INT NULL                       ← CSV `번호`
 - `store_name` TEXT NOT NULL                  ← CSV `판매점명`
-- `rank` SMALLINT NOT NULL                    ← CSV `등수`(1/2)
+- `prize_raw` TEXT NOT NULL                   ← CSV `등수` (예: '1등','2등','보너스')
+- `rank` SMALLINT NOT NULL                    -- `prize_raw` 정규화 결과 (권장: 1등→1, 2등→2, 보너스→0)
 - `method_raw` TEXT NULL                      ← CSV `자동수동`(자동/수동/반자동/빈값)
 - `address_raw` TEXT NOT NULL                 ← CSV `주소`
 - `region_raw` TEXT NULL                      ← CSV `지역`(빈값 가능)
@@ -169,8 +171,8 @@
    - 좌표가 없거나 이상치면 → `geocode_cache` 조회 → 미스 시 카카오 지오코딩(주소→키워드 순) → 캐시 저장
 3. 방법 정규화: `method_raw` -> `method` 매핑(AUTO/MANUAL/SEMI/UNKNOWN). 빈값은 UNKNOWN
 4. 당첨내역 upsert: `winning_records`
-   - `draw_id`(조인), `store_id`(조인), `lottery_type='LOTTO'`(현재 고정), `rank`, `method`, `source_seq`
-   - `source_row_hash = sha256(round_no|LOTTO|store_source_id|rank|source_seq)`로 idempotent upsert
+   - `draw_id`(조인), `store_id`(조인), `lottery_type`, `rank`, `method`, `source_seq`
+   - `source_row_hash = sha256(round_no|lottery_type|store_source_id|rank|source_seq)`로 idempotent upsert
 5. 집계 갱신: 배치 적재 후 `store_stats`를 재계산하거나, 적재 시점에 증분 upsert(ON CONFLICT (store_id))
 6. 이름 변경 이력: 기존 이름과 신규 이름 비교 후 `store_name_history` 기록(의미있는 변경만 구분)
 
