@@ -4,11 +4,15 @@
 -- ============================================
 
 -- 1) draws 테이블: 회차 정보
+-- 로또 6/45: 2002-12-07 1회차, 매주 토요일
+-- 연금복권 720+: 2020-05-07 1회차, 매주 목요일
 CREATE TABLE IF NOT EXISTS draws (
-    round_no INT PRIMARY KEY,
+    round_no INT NOT NULL,
+    lottery_type VARCHAR(10) NOT NULL CHECK (lottery_type IN ('LOTTO','PENSION')),
     draw_date DATE NULL,
     created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ NULL
+    updated_at TIMESTAMPTZ NULL,
+    PRIMARY KEY (round_no, lottery_type)
 );
 
 -- 2) stores 테이블: 판매점 정보
@@ -29,7 +33,7 @@ CREATE TABLE IF NOT EXISTS stores (
 -- 3) winning_records 테이블: 당첨 기록
 CREATE TABLE IF NOT EXISTS winning_records (
     source_row_hash VARCHAR(64) PRIMARY KEY,
-    draw_id INT NOT NULL REFERENCES draws(round_no),
+    draw_id INT NOT NULL,
     store_id BIGINT NOT NULL REFERENCES stores(id),
     lottery_type VARCHAR(10) NOT NULL CHECK (lottery_type IN ('LOTTO','PENSION')),
     rank SMALLINT NOT NULL,
@@ -37,20 +41,22 @@ CREATE TABLE IF NOT EXISTS winning_records (
     source_seq INTEGER NULL,
     won_at DATE NULL,
     created_at TIMESTAMPTZ DEFAULT now(),
+    CONSTRAINT winning_records_draw_fkey
+        FOREIGN KEY (draw_id, lottery_type) REFERENCES draws(round_no, lottery_type),
     CONSTRAINT winning_records_rank_check CHECK (
-        (lottery_type='LOTTO' AND rank IN (1,2)) OR 
-        (lottery_type='PENSION' AND rank IN (1))
+        (lottery_type='LOTTO' AND rank IN (1,2)) OR
+        (lottery_type='PENSION' AND rank IN (0,1,2))
     )
 );
 
 -- winning_records 인덱스
-CREATE INDEX IF NOT EXISTS idx_winning_records_draw_lottery_rank 
+CREATE INDEX IF NOT EXISTS idx_winning_records_draw_lottery_rank
     ON winning_records(draw_id, lottery_type, rank);
-CREATE INDEX IF NOT EXISTS idx_winning_records_store_lottery_rank 
+CREATE INDEX IF NOT EXISTS idx_winning_records_store_lottery_rank
     ON winning_records(store_id, lottery_type, rank);
-CREATE INDEX IF NOT EXISTS idx_winning_records_won_at 
+CREATE INDEX IF NOT EXISTS idx_winning_records_won_at
     ON winning_records(won_at);
-CREATE INDEX IF NOT EXISTS idx_winning_records_method 
+CREATE INDEX IF NOT EXISTS idx_winning_records_method
     ON winning_records(method);
 
 -- 4) geocode_cache 테이블: 주소 -> 좌표 캐시
@@ -85,12 +91,13 @@ CREATE TABLE IF NOT EXISTS store_name_history (
     new_name TEXT NOT NULL,
     old_name_normalized TEXT NOT NULL,
     new_name_normalized TEXT NOT NULL,
-    drw_no INT NOT NULL REFERENCES draws(round_no),
+    drw_no INT NOT NULL,
+    lottery_type VARCHAR(10) NOT NULL DEFAULT 'LOTTO' CHECK (lottery_type IN ('LOTTO','PENSION')),
     is_significant_change BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_store_name_history_store_drw 
+CREATE INDEX IF NOT EXISTS idx_store_name_history_store_drw
     ON store_name_history(store_id, drw_no DESC);
 
 -- 7) job_runs 테이블: 작업 실행 로그
@@ -100,6 +107,7 @@ CREATE TABLE IF NOT EXISTS job_runs (
     run_at TIMESTAMPTZ DEFAULT now(),
     status VARCHAR(20) NOT NULL CHECK (status IN ('STARTED','COMPLETED','FAILED')),
     target_round_no INT NULL,
+    lottery_type VARCHAR(10) NULL CHECK (lottery_type IS NULL OR lottery_type IN ('LOTTO','PENSION')),
     records_processed INT DEFAULT 0,
     error_message TEXT NULL,
     duration_ms BIGINT NULL

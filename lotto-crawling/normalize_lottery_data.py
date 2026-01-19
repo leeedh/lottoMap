@@ -1,6 +1,5 @@
 import pandas as pd
 import re
-from korean_cleaner import KoreanCleaner
 
 def normalize_phone_number(phone_number):
     if pd.isna(phone_number):
@@ -8,23 +7,27 @@ def normalize_phone_number(phone_number):
     return re.sub(r'\D', '', str(phone_number))
 
 def main():
-    file_path = 'all_lottery_stores.csv'
+    # Read the all_lottery_stores.csv file
     try:
-        df = pd.read_csv(file_path)
+        df = pd.read_csv("all_lottery_stores.csv")
     except FileNotFoundError:
-        print(f"Error: The file {file_path} was not found.")
+        print("Error: The file all_lottery_stores.csv was not found.")
         return
     except Exception as e:
         print(f"Error reading CSV file: {e}")
         return
 
     # Normalize '전화번호' column
-    df['전화번호'] = df['전화번호'].apply(normalize_phone_number)
+    if '전화번호' in df.columns:
+        df['전화번호'] = df['전화번호'].apply(normalize_phone_number)
+        print("Successfully normalized '전화번호' in all_lottery_stores.csv")
+    else:
+        print("Column '전화번호' not found in all_lottery_stores.csv")
+
 
     # Save the normalized data back to the same CSV file
     try:
-        df.to_csv(file_path, index=False)
-        print(f"Successfully normalized '전화번호' in {file_path}")
+        df.to_csv("all_lottery_stores.csv", index=False)
     except Exception as e:
         print(f"Error writing CSV file: {e}")
 

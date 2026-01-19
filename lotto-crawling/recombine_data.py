@@ -7,7 +7,9 @@ def combine_lottery_data():
 
     try:
         lotto_df = pd.read_csv(lotto_file)
+        lotto_df['복권종류'] = 'lotto'
         pension_df = pd.read_csv(pension_file)
+        pension_df['복권종류'] = 'pension'
         
         # Assuming the columns are compatible for concatenation
         combined_df = pd.concat([lotto_df, pension_df], ignore_index=True)
